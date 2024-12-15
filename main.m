@@ -118,3 +118,54 @@ plot(t_valid, y_valid)
 title("Validation output signal");
 xlabel("t"); ylabel("y(t)")
 
+%% Neural network model
+
+% We use a time-series neural network model, a nonlinear ARX model.
+% Tutorial:
+% https://www.mathworks.com/help/deeplearning/ug/design-time-series-narx-feedback-neural-networks.html
+
+U = num2cell(u_train);
+Y = num2cell(y_train);
+
+% Perform the training in an open-loop configuration
+input_delays = 1:2;
+feedback_delays = 1:2;
+model_size = 10;
+net = narxnet(input_delays, feedback_delays, model_size);
+net.divideFcn = '';
+net.trainParam.min_grad = 1e-10;
+[p,Pi,Ai,t] = preparets(net,U,{},Y);
+
+net = train(net,p,t,Pi);
+
+% Now that the training is over, close the loop
+net_closed = closeloop(net);
+% Perform validation
+U_valid = num2cell(u_valid);
+Y_valid = num2cell(y_valid);
+[inputs,Pi1,Ai1,t1] = preparets(net_closed,U_valid,{},Y_valid);
+% [inputs,Pi1,Ai1] = preparets(net_closed,U_valid,{});
+
+% Gets model output
+y_hat_nn = net_closed(inputs,Pi1,Ai1);
+y_hat_nn = cell2mat(y_hat_nn);
+
+% Calculate statistics, plot model output
+e = y_hat_nn - y_valid(3:end);
+rms_error = rmse(y_hat_nn, y_valid(3:end));
+disp("Root Mean Square error: " + string(rms_error));
+disp("Standard deviation of error: " + string(std(e)))
+
+figure();
+subplot(2,1,1);
+plot(t_valid(3:end), y_valid(3:end));
+hold on;
+plot(t_valid(3:end), y_hat_nn);
+title("Model output")
+legend("True value", "Model output")
+xlabel("t"); ylabel("y(t)");
+
+subplot(2,1,2);
+plot(t_valid(3:end), e)
+title("Error through time");
+xlabel("t"); ylabel("e(t)")
