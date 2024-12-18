@@ -13,6 +13,7 @@
 %% Generate training and validation input signal for identification and perform measurements
 
 clc; clear all; close all;
+disp("Generate training and validation signals")
 
 % ts = 0.01;  % Sampling time
 ts = 0.01;
@@ -26,7 +27,7 @@ y_train = [];
 t_train = [];
 
 % Step signal
-n_steps = 20;
+n_steps = 30;
 step_time = 7;
 deltau = (umax-umin)/n_steps;
 
@@ -45,17 +46,23 @@ for i = 1:n_steps
     u_train = [u_train, u_new * ones(size(t_new))];
 end
 
-% PBRS signal
+% Store the signal without the PRBS part, for GK clustering
+t_train_noprbs = t_train;
+u_train_noprbs = u_train;
+
+% (A)PBRS signal
 pbrs_time = 500;
 t_new = t_train(end):ts:(t_train(end)+pbrs_time);
-u_new = umin + (umax-umin)*round(rand(size(t_new)));
-% u_new = umin + (umax-umin)*(rand(size(t_new))); % aprbs
+% u_new = umin + (umax-umin)*round(rand(size(t_new))); % prbs
+u_new = umin + (umax-umin)*(rand(size(t_new))); % aprbs
 t_train = [t_train, t_new];
 u_train = [u_train, u_new];
 
 % Output signal of the process
 y_train = proces(u_train,t_train,0);
 y_train = y_train(1:end-1);
+y_train_noprbs = proces(u_train_noprbs, t_train_noprbs, 0);
+y_train_noprbs = y_train_noprbs(1:end-1);
 
 % Validation signal
 
@@ -64,7 +71,7 @@ y_valid = [];
 t_valid = [];
 
 % Step signal
-n_steps = 10;
+n_steps = 20;
 step_time = 10;
 deltau = (umax-umin)/n_steps;
 
@@ -83,10 +90,10 @@ for i = 1:n_steps
     u_valid = [u_valid, u_new * ones(size(t_new))];
 end
 
-% PBRS signal
+% (A)PBRS signal
 pbrs_time = 100;
 t_new = t_valid(end):ts:(t_valid(end)+pbrs_time);
-% u_new = umin + (umax-umin)*round(rand(size(t_new)));
+% u_new = umin + (umax-umin)*round(rand(size(t_new))); % prbs
 u_new = umin + (umax-umin)*(rand(size(t_new))); % aprbs
 t_valid = [t_valid, t_new];
 u_valid = [u_valid, u_new];
@@ -96,6 +103,7 @@ y_valid = proces(u_valid,t_valid,0);
 y_valid = y_valid(1:end-1);
 
 % Plot the train and validation signals
+
 figure();
 subplot(2,1,1);
 plot(t_train, u_train);
@@ -118,11 +126,15 @@ plot(t_valid, y_valid)
 title("Validation output signal");
 xlabel("t"); ylabel("y(t)")
 
+disp(" ")
+
 %% Neural network model
 
 % We use a time-series neural network model, a nonlinear ARX model.
 % Tutorial:
 % https://www.mathworks.com/help/deeplearning/ug/design-time-series-narx-feedback-neural-networks.html
+
+disp("Neural network model")
 
 U = num2cell(u_train);
 Y = num2cell(y_train);
@@ -141,9 +153,9 @@ net = train(net,p,t,Pi);
 % Now that the training is over, close the loop
 net_closed = closeloop(net);
 % Perform validation
-U_valid = num2cell(u_valid);
-Y_valid = num2cell(y_valid);
-[inputs,Pi1,Ai1,t1] = preparets(net_closed,U_valid,{},Y_valid);
+u_valid_cell = num2cell(u_valid);
+y_valid_cell = num2cell(y_valid);
+[inputs,Pi1,Ai1,t1] = preparets(net_closed,u_valid_cell,{},y_valid_cell);
 % [inputs,Pi1,Ai1] = preparets(net_closed,U_valid,{});
 
 % Gets model output
@@ -154,18 +166,86 @@ y_hat_nn = cell2mat(y_hat_nn);
 e = y_hat_nn - y_valid(3:end);
 rms_error = rmse(y_hat_nn, y_valid(3:end));
 disp("Root Mean Square error: " + string(rms_error));
-disp("Standard deviation of error: " + string(std(e)))
+disp("Standard deviation of error: " + string(std(e)));
 
 figure();
 subplot(2,1,1);
 plot(t_valid(3:end), y_valid(3:end));
 hold on;
 plot(t_valid(3:end), y_hat_nn);
-title("Model output")
+title("Neural network model: output")
 legend("True value", "Model output")
 xlabel("t"); ylabel("y(t)");
 
 subplot(2,1,2);
 plot(t_valid(3:end), e)
-title("Error through time");
+title("Neural network model: Error through time");
 xlabel("t"); ylabel("e(t)")
+
+disp(" ")
+
+%% Fuzzy model
+
+disp("Fuzzy model")
+
+% Get clusters using Gustafson-Kessel fuzzy clustering to use with the
+% Takagi-Sugeno method
+
+num_clusters = 5;
+cluster_fuzziness = 2.3;
+clustering_iterations = 30;
+
+% Prepare the input output space for clustering
+% We perform the clustering without the APRBS part, as it seems to mess
+% with the clustering algorithm.
+X = [u_train_noprbs', y_train_noprbs'];
+
+% Perform clustering
+[centers, cov_centers, x_grid, y_grid, val_grid] = gk_clustering(X,num_clusters,cluster_fuzziness,400,0.001,clustering_iterations);
+num_c = length(centers); % number of clusters
+
+% Draw points, cluster centers and membership contours
+figure; subplot(2,1,1)
+contourf(x_grid,y_grid,val_grid, 'FaceAlpha', 0.25)
+hold on;
+plot(X(:,1), X(:,2), '.', 'color', 'black')
+plot(centers(:,1), centers(:,2), 'pentagram', 'color', 'red')
+title("Clustering of the input-output space")
+xlabel("input - u"); ylabel("output - y");
+legend("membership contour plot", "data in input-output space", "cluster centers", "Location", "northwest")
+
+% Although GK returns a complicated membership function (not a simple
+% Gaussian or normalized Gaussian), when defining a TS model, we can assume
+% normalized Gaussian activation functions and use only cluster centers
+% and the variances from the GK clusters.
+
+% Generate lookup table matrix for getting activation functions from input
+% value
+
+act_table = [];
+
+du = (umax-umin)/200;
+u = umin:du:umax;
+
+for i = 1:num_c
+    mean_u = centers(i,1);
+    std_u = sqrt(cov_centers(1,1,i));
+    act_table = [act_table, gaussmf(u, [std_u,mean_u])'];
+end
+
+% Normalize the activation functions
+act_table_norm = act_table./repmat(sum(act_table, 2), 1,num_c);
+
+% Plot the activation functions
+subplot(2,2,3)
+hold on; xlabel("input - u"); ylabel("activation function value - \mu_i");
+title("Takagi-Sugeno activation function values")
+for i = 1:num_c
+    plot(u, act_table(:,i));
+end
+subplot(2,2,4);
+hold on; xlabel("input - u"); ylabel("cluster membership - \mu_i");
+title("Takagi-Sugeno activation function values - normalized")
+for i = 1:num_c
+    plot(u, act_table_norm(:,i));
+end

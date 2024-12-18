@@ -55,7 +55,7 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
         stop_threshold = 0.001
         max_iter = 100
     end
-    
+
     N = length(X); % Number of samples
     n = length(X(1,:)); % Number of variables
 
@@ -80,10 +80,14 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
     v_hist = v; % For plotting
     iteration = 0;
 
+    disp("Starting the clustering algorithm")
+
     while(true)
         iteration = iteration + 1;
-        disp("Iteration " + iteration)
-    
+        if mod(iteration,5) == 0
+            disp("Iteration " + iteration)
+        end
+
         % Update center for each cluster
         % This is a normalized weighted sum of all samples, weight is based on
         % mu of that sample
@@ -91,10 +95,13 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
             center = (U(i,:).^eta * X) / sum(U(i,:).^eta);
             v(i,:) = center;
         end
+
         % Store the centers for plotting
         v_hist(:,:,iteration+1) = v;
-    
+
         cluster_covariances = [];
+
+
         for i = 1:c
             % Calculate the fuzzy covariance matrix for each cluster
             sigma_i = zeros(n);
@@ -113,7 +120,7 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
             % For outputting cluster covariances at the end
             cluster_covariances(:,:,i) = sigma_i;
         end
-    
+
         % Calculate distances of each point to each cluster
         D = zeros(N,c);
         for i = 1:c
@@ -122,7 +129,8 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
                 D(k,i) = d(X(k,:), center, F(:,:,i));
             end
         end
-    
+
+
         % Update the assignment matrix U
         w = 2/(eta-1);
         for i = 1:c
@@ -132,18 +140,19 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
                 U(i,k) = (1/Di^w) / Di_sum;
             end
         end
-    
+
+
         % Check stop conditions
         if(all(abs(v_hist(:,:,end) - v_hist(:,:,end-1)) < stop_threshold, 'all'))
             disp("Stopping in iteration " + string(iteration))
             break
         end
         if(iteration >= max_iter)
-            disp("Stopping due to max iterations reached - " + string(iteration))
+            disp("Stopping due to max iterations reached")
             break
         end
     end
-    
+
     % Calculate the U grid for contours, only if data is two dimensional
     if n == 2
         % You basically need to create a grid of points and calculate the
@@ -198,5 +207,6 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
     x_grid = x_grid;
     y_grid = y_grid;
     val_grid = U_tight';
+
 end
 
