@@ -51,6 +51,7 @@ t_train_noprbs = t_train;
 u_train_noprbs = u_train;
 
 % (A)PBRS signal
+% TODO: Try using a delayed APRBS signal for clustering
 pbrs_time = 500;
 t_new = t_train(end):ts:(t_train(end)+pbrs_time);
 % u_new = umin + (umax-umin)*round(rand(size(t_new))); % prbs
@@ -185,11 +186,13 @@ xlabel("t"); ylabel("e(t)")
 disp(" ")
 
 %% Fuzzy model
+% We get clusters using Gustafson-Kessel fuzzy clustering to use with the
+% Takagi-Sugeno method. Based on those cluster centers and variances, we
+% define Gaussian activation functions for the Takagi-Sugeno models. Then,
+% we define a linear model for each cluster and calculate the parameters
+% using the weigthed least squares method.
 
 disp("Fuzzy model")
-
-% Get clusters using Gustafson-Kessel fuzzy clustering to use with the
-% Takagi-Sugeno method
 
 num_clusters = 5;
 cluster_fuzziness = 2.3;
@@ -202,7 +205,6 @@ X = [u_train_noprbs', y_train_noprbs'];
 
 % Perform clustering
 [centers, cov_centers, x_grid, y_grid, val_grid] = gk_clustering(X,num_clusters,cluster_fuzziness,400,0.001,clustering_iterations);
-num_c = length(centers); % number of clusters
 
 % Draw points, cluster centers and membership contours
 figure; subplot(2,1,1)
@@ -225,27 +227,73 @@ legend("membership contour plot", "data in input-output space", "cluster centers
 act_table = [];
 
 du = (umax-umin)/200;
-u = umin:du:umax;
+act_table_u = umin:du:umax; %  The independent variable in the lookup table
 
-for i = 1:num_c
+for i = 1:num_clusters
     mean_u = centers(i,1);
     std_u = sqrt(cov_centers(1,1,i));
-    act_table = [act_table, gaussmf(u, [std_u,mean_u])'];
+    act_table = [act_table, gaussmf(act_table_u, [std_u,mean_u])']; % The dependent variable in the lookup table
 end
 
 % Normalize the activation functions
-act_table_norm = act_table./repmat(sum(act_table, 2), 1,num_c);
+act_table_norm = act_table./repmat(sum(act_table, 2), 1,num_clusters);
 
 % Plot the activation functions
 subplot(2,2,3)
 hold on; xlabel("input - u"); ylabel("activation function value - \mu_i");
 title("Takagi-Sugeno activation function values")
-for i = 1:num_c
-    plot(u, act_table(:,i));
+for i = 1:num_clusters
+    plot(act_table_u, act_table(:,i));
 end
 subplot(2,2,4);
 hold on; xlabel("input - u"); ylabel("cluster membership - \mu_i");
 title("Takagi-Sugeno activation function values - normalized")
-for i = 1:num_c
-    plot(u, act_table_norm(:,i));
+for i = 1:num_clusters
+    plot(act_table_u, act_table_norm(:,i));
 end
+
+%% Generate linear ARX models for each cluster (without the stohastic part)
+% We perform local optimization using weigthed linear least squares, as it
+% is simpler and provides better interpretation.
+
+% TODO: We pick (poles and zeros)
+
+% Determine U0 and Y0 operating points
+cluster_operating_points = [];
+for i = 1:num_clusters
+    U0 = centers(i,1);
+
+    ts = 0.01;
+    t = 0:ts:30;
+    u = ones(size(t))*U0;
+    y = proces(u,t,0);
+    Y0 = y(end);
+    cluster_operating_points = [cluster_operating_points; U0, Y0];
+end
+
+model_weights = [];
+
+for i = 1:num_clusters
+    % Generate weights matrix based on the i-th cluster activation function
+    % Performs table lookup (outputs weigths for each sample in the input
+    % signal)
+    W = interp1(act_table_u, act_table_norm(:,i), u_train_noprbs(3:end)); 
+    W = diag(W);
+
+    % Correct the input and output signals to represent deviations from the
+    % operating point
+    y = y_train_noprbs - cluster_operating_points(i,2);
+    u = u_train_noprbs - cluster_operating_points(i,1);
+
+    % Generate the psi matrix with delayed inputs
+    m = 2;
+    N = length(y_train_noprbs);
+    X = [u(m:N-1)', u(m-1:N-m)', -y(m:N-1)', -y(1:N-m)'];
+
+    % Perform WLS
+    theta_hat = (X'*W*X)\X'*W*y(m+1:end)';
+    model_weights(:,i) = theta_hat;
+end
+
+
+% Model evaluation
