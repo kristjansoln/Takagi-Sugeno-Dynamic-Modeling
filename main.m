@@ -15,8 +15,7 @@
 clc; clear all; close all;
 disp("Generate training and validation signals")
 
-% ts = 0.01;  % Sampling time
-ts = 0.01;
+ts = 0.01;  % Sampling time
 umin = 0;
 umax = 1.35;
 
@@ -28,7 +27,7 @@ t_train = [];
 
 % Step signal
 n_steps = 20;
-step_time = 10;
+step_time = 6;
 deltau = (umax-umin)/n_steps;
 
 for i = 0:n_steps
@@ -50,12 +49,26 @@ end
 t_train_noprbs = t_train;
 u_train_noprbs = u_train;
 
-% (A)PBRS signal
-% TODO: Try using a delayed APRBS signal for clustering
+% APBRS signal
+% APRBS should contain pulses with lenght of at least the rise time of the
+% process. Here, 1.5 or 2 sec should be enough.
 pbrs_time = 500;
 t_new = t_train(end):ts:(t_train(end)+pbrs_time);
-% u_new = umin + (umax-umin)*round(rand(size(t_new))); % prbs
-u_new = umin + (umax-umin)*(rand(size(t_new))); % aprbs
+
+len_min = round(2/ts); % In samples
+len_max = len_min*3;
+k = 1;
+while k < length(t_new)
+    len = len_min + round(rand()*len_max);
+    val = umin + (umax-umin)*(rand());
+    
+    u_new = [u_new, repmat(val, [1,len])];
+    k = k+len;
+end
+
+% Trim the aprbs signal to the correct length
+u_new = u_new(1:length(t_new));
+
 t_train = [t_train, t_new];
 u_train = [u_train, u_new];
 
@@ -71,7 +84,7 @@ u_valid = [];
 y_valid = [];
 t_valid = [];
 
-% Step signal
+% Step part
 n_steps = 20;
 step_time = 10;
 deltau = (umax-umin)/n_steps;
@@ -91,15 +104,29 @@ for i = 1:n_steps
     u_valid = [u_valid, u_new * ones(size(t_new))];
 end
 
-% (A)PBRS signal
+% APBRS part
 pbrs_time = 100;
 t_new = t_valid(end):ts:(t_valid(end)+pbrs_time);
-% u_new = umin + (umax-umin)*round(rand(size(t_new))); % prbs
-u_new = umin + (umax-umin)*(rand(size(t_new))); % aprbs
+
+len_min = round(2/ts); % In samples
+len_max = len_min*3;
+k = 1;
+while k < length(t_new)
+    len = len_min + round(rand()*len_max);
+    val = umin + (umax-umin)*(rand());
+    
+    u_new = [u_new, repmat(val, [1,len])];
+    k = k+len;
+end
+
+% Trim the aprbs signal to the correct length
+u_new = u_new(1:length(t_new));
+
 t_valid = [t_valid, t_new];
 u_valid = [u_valid, u_new];
 
 % Output signal
+
 y_valid = proces(u_valid,t_valid,0);
 y_valid = y_valid(1:end-1);
 
@@ -196,7 +223,7 @@ disp(" ")
 
 disp("Fuzzy model")
 
-num_clusters = 5;
+num_clusters = 6;
 cluster_fuzziness = 2.3;
 clustering_iterations = 30;
 
@@ -255,7 +282,8 @@ for i = 1:num_clusters
 end
 
 clear X x_grid y_grid val_grid act_table
-%% Generate linear ARX models for each cluster (without the stohastic part)
+
+% Generate linear ARX models for each cluster (without the stohastic part)
 % We perform local optimization using weigthed linear least squares, as it
 % is simpler and provides better interpretation.
 
@@ -282,17 +310,17 @@ for i = 1:num_clusters
     % Generate diagonal weights matrix based on the i-th cluster activation function
     % Performs table lookup (outputs weigths for each sample in the input
     % signal)
-    W = interp1(act_table_u, act_table_norm(:,i), u_train_noprbs(3:end));
+    W = interp1(act_table_u, act_table_norm(:,i), u_train(3:end));
     W = sparse(1:length(W), 1:length(W), W); % Use a sparse matrix to save memory
 
     % Correct the input and output signals to represent deviations from the
     % operating point
-    y = y_train_noprbs - cluster_operating_points(i,2);
-    u = u_train_noprbs - cluster_operating_points(i,1);
+    y = y_train - cluster_operating_points(i,2);
+    u = u_train - cluster_operating_points(i,1);
 
     % Generate the psi matrix with delayed inputs
     m = 2;
-    N = length(y_train_noprbs);
+    N = length(y);
     X = [u(m:N-1)', u(m-1:N-m)', -y(m:N-1)', -y(1:N-m)'];
 
     % Perform WLS
@@ -310,17 +338,14 @@ clear W y u X num denom
 
 % Model evaluation
 
-% TODO: Implement the correct APRBS which has a random delay
-% TODO: Do evaluation on the validation signal
-
 individual_model_output = [];
 
 for i = 1:num_clusters
     % Generate weights matrix
-    w = interp1(act_table_u, act_table_norm(:,i), u_train_noprbs(3:end));
+    w = interp1(act_table_u, act_table_norm(:,i), u_train(3:end));
 
     % Correct the input signal to represent deviations from the operating point
-    u_rel = u_train_noprbs - cluster_operating_points(i,1);
+    u_rel = u_train - cluster_operating_points(i,1);
 
     % Calculate model output
     [y,t_out] = lsim(models(i), u_rel(3:end));
@@ -340,24 +365,24 @@ hold on;
 for i = 1:num_clusters
     plot(t_out, individual_model_output(:,i))
 end
-plot(t_train_noprbs, y_train_noprbs, '-')
+plot(t_train, y_train, '-')
 legend("Model 1","Model 2","Model 3","Model 4","Model 5","Ground truth")
 
 subplot(2,2,2);
 title("Fuzzy model: Output")
 hold on;
-plot(t_train_noprbs, y_train_noprbs, '-')
-plot(t_train_noprbs(3:end), y_hat_fuzzy)
+plot(t_train, y_train, '-')
+plot(t_train(3:end), y_hat_fuzzy)
 legend("Ground truth", "TS model output")
 
 % Calculate and plot the error
-e = y_hat_fuzzy - y_train_noprbs(3:end)';
-rms_error = rmse(y_hat_fuzzy, y_train_noprbs(3:end)');
+e = y_hat_fuzzy - y_train(3:end)';
+rms_error = rmse(y_hat_fuzzy, y_train(3:end)');
 disp("Root Mean Square error: " + string(rms_error));
 disp("Standard deviation of error: " + string(std(e)));
 
 subplot(2,1,2);
-plot(t_train_noprbs(3:end), e)
+plot(t_train(3:end), e)
 title("Fuzzy model: Error through time");
 xlabel("t"); ylabel("e(t)"); grid on;
 
