@@ -27,8 +27,8 @@ y_train = [];
 t_train = [];
 
 % Step signal
-n_steps = 30;
-step_time = 7;
+n_steps = 20;
+step_time = 10;
 deltau = (umax-umin)/n_steps;
 
 for i = 0:n_steps
@@ -128,6 +128,8 @@ title("Validation output signal");
 xlabel("t"); ylabel("y(t)")
 
 disp(" ")
+
+clear deltau i t_new u_new
 
 %% Neural network model
 
@@ -252,6 +254,7 @@ for i = 1:num_clusters
     plot(act_table_u, act_table_norm(:,i));
 end
 
+clear X x_grid y_grid val_grid act_table
 %% Generate linear ARX models for each cluster (without the stohastic part)
 % We perform local optimization using weigthed linear least squares, as it
 % is simpler and provides better interpretation.
@@ -265,20 +268,22 @@ for i = 1:num_clusters
 
     ts = 0.01;
     t = 0:ts:30;
-    u = ones(size(t))*U0;
-    y = proces(u,t,0);
+    y = proces(ones(size(t))*U0,t,0);
     Y0 = y(end);
     cluster_operating_points = [cluster_operating_points; U0, Y0];
 end
 
+clear y t
+
 model_weights = [];
+models = [];
 
 for i = 1:num_clusters
-    % Generate weights matrix based on the i-th cluster activation function
+    % Generate diagonal weights matrix based on the i-th cluster activation function
     % Performs table lookup (outputs weigths for each sample in the input
     % signal)
-    W = interp1(act_table_u, act_table_norm(:,i), u_train_noprbs(3:end)); 
-    W = diag(W);
+    W = interp1(act_table_u, act_table_norm(:,i), u_train_noprbs(3:end));
+    W = sparse(1:length(W), 1:length(W), W); % Use a sparse matrix to save memory
 
     % Correct the input and output signals to represent deviations from the
     % operating point
@@ -292,8 +297,68 @@ for i = 1:num_clusters
 
     % Perform WLS
     theta_hat = (X'*W*X)\X'*W*y(m+1:end)';
+
+    % discrete-time TF
     model_weights(:,i) = theta_hat;
+
+    num = theta_hat(1:2)';
+    denom = [1, theta_hat(3:4)'];
+    models = [models, tf(num,denom,ts)];
 end
 
+clear W y u X num denom
 
 % Model evaluation
+
+% TODO: Implement the correct APRBS which has a random delay
+% TODO: Do evaluation on the validation signal
+
+individual_model_output = [];
+
+for i = 1:num_clusters
+    % Generate weights matrix
+    w = interp1(act_table_u, act_table_norm(:,i), u_train_noprbs(3:end));
+
+    % Correct the input signal to represent deviations from the operating point
+    u_rel = u_train_noprbs - cluster_operating_points(i,1);
+
+    % Calculate model output
+    [y,t_out] = lsim(models(i), u_rel(3:end));
+    y = y + cluster_operating_points(i,2);  % Take operating point into account
+    y_weighted = y.*w';
+    individual_model_output = [individual_model_output, y_weighted];
+end
+
+% Merge model outputs
+y_hat_fuzzy = sum(individual_model_output, 2);
+
+% Plot the output
+figure();
+subplot(2,2,1)
+title("Fuzzy model: Individual Model Output");
+hold on;
+for i = 1:num_clusters
+    plot(t_out, individual_model_output(:,i))
+end
+plot(t_train_noprbs, y_train_noprbs, '-')
+legend("Model 1","Model 2","Model 3","Model 4","Model 5","Ground truth")
+
+subplot(2,2,2);
+title("Fuzzy model: Output")
+hold on;
+plot(t_train_noprbs, y_train_noprbs, '-')
+plot(t_train_noprbs(3:end), y_hat_fuzzy)
+legend("Ground truth", "TS model output")
+
+% Calculate and plot the error
+e = y_hat_fuzzy - y_train_noprbs(3:end)';
+rms_error = rmse(y_hat_fuzzy, y_train_noprbs(3:end)');
+disp("Root Mean Square error: " + string(rms_error));
+disp("Standard deviation of error: " + string(std(e)));
+
+subplot(2,1,2);
+plot(t_train_noprbs(3:end), e)
+title("Fuzzy model: Error through time");
+xlabel("t"); ylabel("e(t)"); grid on;
+
+disp(" ")
