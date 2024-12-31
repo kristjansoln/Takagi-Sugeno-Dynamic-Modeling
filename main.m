@@ -10,7 +10,7 @@ disp("Generate training and test signals")
 
 ts = 0.01;  % Sampling time
 umin = 0;
-umax = 1.35;
+umax = 1.35; % Saturates the output
 
 % Training signal
 
@@ -216,8 +216,8 @@ disp(" ")
 
 disp("Fuzzy model")
 
-num_clusters = 6;
-cluster_fuzziness = 2.3;
+num_clusters = 5;
+cluster_fuzziness = 1.9;
 clustering_iterations = 30;
 
 % Prepare the input output space for clustering
@@ -276,11 +276,16 @@ end
 
 clear X x_grid y_grid val_grid act_table
 
-% Generate linear ARX models for each cluster (without the stohastic part)
-% We perform local optimization using weigthed linear least squares, as it
-% is simpler and provides better interpretation.
+% Generate linear ARX models (without the stochastic part) for each cluster.
+% We perform local optimization using weighted linear least squares.
+% Local optimization is simpler and provides better interpretation than
+% global optimization, although resulting in slightly worse performance.
 
-% TODO: We pick (poles and zeros)
+% We pick a second order model, with one zero.
+%     b1 z^-1 + b2 z-2              b1 z^1 + b2
+% ------------------------  =  --------------------
+%   1 + a1 z^-1 + a2 y^-2        z^2 + a1 z^1 + a2
+
 
 % Determine U0 and Y0 operating points
 cluster_operating_points = [];
@@ -351,7 +356,7 @@ end
 % Merge model outputs
 y_hat_fuzzy = sum(individual_model_output, 2);
 
-%% Plot the output
+% Plot the output
 figure();
 title("Fuzzy model evaluation: Individual Model Output");
 hold on; grid on;
