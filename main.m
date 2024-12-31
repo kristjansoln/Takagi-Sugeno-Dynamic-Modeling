@@ -1,19 +1,12 @@
 %% ASSIGNMENT 5
+
 % Nonlinear dynamical model
 % Kristjan Šoln
 
-% ts = 0.01; %tega se ne da spreminjati!
-% 
-% t = 0:ts:15;
-% u = sin(t);
-% 
-% kot = proces(u, t, 0);
-% plot(t, kot(1:end-1))
-
-%% Generate training and validation input signal for identification and perform measurements
+%% Generate training and test input signal for identification and perform measurements
 
 clc; clear all; close all;
-disp("Generate training and validation signals")
+disp("Generate training and test signals")
 
 ts = 0.01;  % Sampling time
 umin = 0;
@@ -78,11 +71,11 @@ y_train = y_train(1:end-1);
 y_train_noprbs = proces(u_train_noprbs, t_train_noprbs, 0);
 y_train_noprbs = y_train_noprbs(1:end-1);
 
-% Validation signal
+% Test signal
 
-u_valid = [];
-y_valid = [];
-t_valid = [];
+u_test = [];
+y_test = [];
+t_test = [];
 
 % Step part
 n_steps = 20;
@@ -93,20 +86,20 @@ for i = 0:n_steps
     t_new = (i*step_time):ts:((i+1)*step_time);
     u_new = (umin + i*deltau);
     
-    t_valid = [t_valid, t_new];
-    u_valid = [u_valid, u_new * ones(size(t_new))];
+    t_test = [t_test, t_new];
+    u_test = [u_test, u_new * ones(size(t_new))];
 end
 for i = 1:n_steps
-    t_new = t_valid(end):ts:(t_valid(end)+step_time);
+    t_new = t_test(end):ts:(t_test(end)+step_time);
     u_new = (umax - i*deltau);
     
-    t_valid = [t_valid, t_new];
-    u_valid = [u_valid, u_new * ones(size(t_new))];
+    t_test = [t_test, t_new];
+    u_test = [u_test, u_new * ones(size(t_new))];
 end
 
 % APBRS part
 pbrs_time = 100;
-t_new = t_valid(end):ts:(t_valid(end)+pbrs_time);
+t_new = t_test(end):ts:(t_test(end)+pbrs_time);
 
 len_min = round(2/ts); % In samples
 len_max = len_min*3;
@@ -122,15 +115,15 @@ end
 % Trim the aprbs signal to the correct length
 u_new = u_new(1:length(t_new));
 
-t_valid = [t_valid, t_new];
-u_valid = [u_valid, u_new];
+t_test = [t_test, t_new];
+u_test = [u_test, u_new];
 
 % Output signal
 
-y_valid = proces(u_valid,t_valid,0);
-y_valid = y_valid(1:end-1);
+y_test = proces(u_test,t_test,0);
+y_test = y_test(1:end-1);
 
-% Plot the train and validation signals
+% Plot the train and test signals
 
 figure();
 subplot(2,1,1);
@@ -145,13 +138,13 @@ xlabel("t"); ylabel("y(t)")
 
 figure();
 subplot(2,1,1);
-plot(t_valid, u_valid);
-title("Validation input signal")
+plot(t_test, u_test);
+title("Test input signal")
 xlabel("t"); ylabel("u(t)");
 
 subplot(2,1,2);
-plot(t_valid, y_valid)
-title("Validation output signal");
+plot(t_test, y_test)
+title("Test output signal");
 xlabel("t"); ylabel("y(t)")
 
 disp(" ")
@@ -182,33 +175,33 @@ net = train(net,p,t,Pi);
 
 % Now that the training is over, close the loop
 net_closed = closeloop(net);
-% Perform validation
-u_valid_cell = num2cell(u_valid);
-y_valid_cell = num2cell(y_valid);
-[inputs,Pi1,Ai1,t1] = preparets(net_closed,u_valid_cell,{},y_valid_cell);
-% [inputs,Pi1,Ai1] = preparets(net_closed,U_valid,{});
+% Perform testing
+u_test_cell = num2cell(u_test);
+y_test_cell = num2cell(y_test);
+[inputs,Pi1,Ai1,t1] = preparets(net_closed,u_test_cell,{},y_test_cell);
+% [inputs,Pi1,Ai1] = preparets(net_closed,U_test,{});
 
 % Gets model output
 y_hat_nn = net_closed(inputs,Pi1,Ai1);
 y_hat_nn = cell2mat(y_hat_nn);
 
 % Calculate statistics, plot model output
-e = y_hat_nn - y_valid(3:end);
-rms_error = rmse(y_hat_nn, y_valid(3:end));
+e = y_hat_nn - y_test(3:end);
+rms_error = rmse(y_hat_nn, y_test(3:end));
 disp("Root Mean Square error: " + string(rms_error));
 disp("Standard deviation of error: " + string(std(e)));
 
 figure();
 subplot(2,1,1);
-plot(t_valid(3:end), y_valid(3:end));
+plot(t_test(3:end), y_test(3:end));
 hold on;
-plot(t_valid(3:end), y_hat_nn);
+plot(t_test(3:end), y_hat_nn);
 title("Neural network model: output")
 legend("True value", "Model output")
 xlabel("t"); ylabel("y(t)");
 
 subplot(2,1,2);
-plot(t_valid(3:end), e)
+plot(t_test(3:end), e)
 title("Neural network model: Error through time");
 xlabel("t"); ylabel("e(t)")
 
