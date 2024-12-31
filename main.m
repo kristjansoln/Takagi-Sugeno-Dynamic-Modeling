@@ -330,15 +330,16 @@ end
 clear W y u X num denom
 
 % Model evaluation
+% Perform model evaluation using the test signal
 
 individual_model_output = [];
 
 for i = 1:num_clusters
     % Generate weights matrix
-    w = interp1(act_table_u, act_table_norm(:,i), u_train(3:end));
+    w = interp1(act_table_u, act_table_norm(:,i), u_test(3:end));
 
     % Correct the input signal to represent deviations from the operating point
-    u_rel = u_train - cluster_operating_points(i,1);
+    u_rel = u_test - cluster_operating_points(i,1);
 
     % Calculate model output
     [y,t_out] = lsim(models(i), u_rel(3:end));
@@ -350,33 +351,34 @@ end
 % Merge model outputs
 y_hat_fuzzy = sum(individual_model_output, 2);
 
-% Plot the output
+%% Plot the output
 figure();
-subplot(2,2,1)
-title("Fuzzy model: Individual Model Output");
-hold on;
+title("Fuzzy model evaluation: Individual Model Output");
+hold on; grid on;
 for i = 1:num_clusters
     plot(t_out, individual_model_output(:,i))
 end
-plot(t_train, y_train, '-')
-legend("Model 1","Model 2","Model 3","Model 4","Model 5","Ground truth")
+plot(t_test, y_test, '-')
+legend("Model 1","Model 2","Model 3","Model 4","Model 5","y_{test}")
+xlabel("t");
 
-subplot(2,2,2);
-title("Fuzzy model: Output")
-hold on;
-plot(t_train, y_train, '-')
-plot(t_train(3:end), y_hat_fuzzy)
-legend("Ground truth", "TS model output")
+figure();
+title("Fuzzy model evaluation: Summed output")
+hold on; grid on;
+plot(t_test, y_test, '-')
+plot(t_test(3:end), y_hat_fuzzy)
+legend("$y_{test}$", '$\hat{y}_{test}$' ,'Interpreter','latex')
+xlabel("t");
 
 % Calculate and plot the error
-e = y_hat_fuzzy - y_train(3:end)';
-rms_error = rmse(y_hat_fuzzy, y_train(3:end)');
+e = y_hat_fuzzy - y_test(3:end)';
+rms_error = rmse(y_hat_fuzzy, y_test(3:end)');
 disp("Root Mean Square error: " + string(rms_error));
 disp("Standard deviation of error: " + string(std(e)));
 
-subplot(2,1,2);
-plot(t_train(3:end), e)
-title("Fuzzy model: Error through time");
+figure();
+plot(t_test(3:end), e)
+title("Fuzzy model evaluation: Error through time");
 xlabel("t"); ylabel("e(t)"); grid on;
 
 disp(" ")
