@@ -11,6 +11,8 @@ disp("Generate training and test signals")
 ts = 0.01;  % Sampling time
 umin = 0;
 umax = 1.35; % Saturates the output
+% umax = 1.2;
+umax = 1.32;
 
 % Training signal
 
@@ -20,7 +22,7 @@ t_train = [];
 
 % Step signal
 n_steps = 20;
-step_time = 6;
+step_time = 10;
 deltau = (umax-umin)/n_steps;
 
 for i = 0:n_steps
@@ -78,8 +80,8 @@ y_test = [];
 t_test = [];
 
 % Step part
-n_steps = 20;
-step_time = 10;
+n_steps = 12;
+step_time = 13;
 deltau = (umax-umin)/n_steps;
 
 for i = 0:n_steps
@@ -216,9 +218,9 @@ disp(" ")
 
 disp("Fuzzy model")
 
-num_clusters = 5;
-cluster_fuzziness = 1.9;
-clustering_iterations = 30;
+num_clusters = 7;
+cluster_fuzziness = 1.6;%1.9;
+clustering_iterations = 150;%30;
 
 % Prepare the input output space for clustering
 % We perform the clustering without the APRBS part, as it seems to mess
@@ -286,21 +288,6 @@ clear X x_grid y_grid val_grid act_table
 % ------------------------  =  --------------------
 %   1 + a1 z^-1 + a2 y^-2        z^2 + a1 z^1 + a2
 
-
-% Determine U0 and Y0 operating points
-cluster_operating_points = [];
-for i = 1:num_clusters
-    U0 = centers(i,1);
-
-    ts = 0.01;
-    t = 0:ts:30;
-    y = proces(ones(size(t))*U0,t,0);
-    Y0 = y(end);
-    cluster_operating_points = [cluster_operating_points; U0, Y0];
-end
-
-clear y t
-
 model_weights = [];
 models = [];
 
@@ -313,8 +300,8 @@ for i = 1:num_clusters
 
     % Correct the input and output signals to represent deviations from the
     % operating point
-    y = y_train - cluster_operating_points(i,2);
-    u = u_train - cluster_operating_points(i,1);
+    y = y_train;
+    u = u_train;
 
     % Generate the psi matrix with delayed inputs
     m = 2;
@@ -343,12 +330,8 @@ for i = 1:num_clusters
     % Generate weights matrix
     w = interp1(act_table_u, act_table_norm(:,i), u_test(3:end));
 
-    % Correct the input signal to represent deviations from the operating point
-    u_rel = u_test - cluster_operating_points(i,1);
-
     % Calculate model output
-    [y,t_out] = lsim(models(i), u_rel(3:end));
-    y = y + cluster_operating_points(i,2);  % Take operating point into account
+    [y,t_out] = lsim(models(i), u_test(3:end));
     y_weighted = y.*w';
     individual_model_output = [individual_model_output, y_weighted];
 end
@@ -363,7 +346,7 @@ hold on; grid on;
 for i = 1:num_clusters
     plot(t_out, individual_model_output(:,i))
 end
-plot(t_test, y_test, '-')
+plot(t_test, y_test, '--')
 legend("Model 1","Model 2","Model 3","Model 4","Model 5","y_{test}")
 xlabel("t");
 
@@ -372,7 +355,7 @@ title("Fuzzy model evaluation: Summed output")
 hold on; grid on;
 plot(t_test, y_test, '-')
 plot(t_test(3:end), y_hat_fuzzy)
-legend("$y_{test}$", '$\hat{y}_{test}$' ,'Interpreter','latex')
+legend("$y_{test}$", '$\hat{y}_{model}$' ,'Interpreter','latex')
 xlabel("t");
 
 % Calculate and plot the error
