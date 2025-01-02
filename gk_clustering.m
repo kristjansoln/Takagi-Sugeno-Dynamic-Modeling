@@ -60,7 +60,21 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
     n = length(X(1,:)); % Number of variables
 
     % Define cluster starting positions with random samples
-    v = X(round(rand([c,1])*(length(X)-1) + 0.5), :);
+    % v = X(round(rand([c,1])*(length(X)-1) + 0.5), :);
+    % OR Define cluster starting positions with equal intervals across the
+    % axes.
+    % This is good for clustering the input-output space.
+    top_boundary = max(X(:,1));
+    bot_boundary = min(X(:,1));
+    delta_v = (top_boundary-bot_boundary)/(c-1);
+    v_u = [bot_boundary:delta_v:top_boundary];
+
+    top_boundary = max(X(:,2));
+    bot_boundary = min(X(:,2));
+    delta_v = (top_boundary-bot_boundary)/(c-1);
+    v_y = [bot_boundary:delta_v:top_boundary];
+
+    v = [v_u', v_y'];
 
     % Init the U matrix, normalize it so columns sum up to 1
     % This gives the samples a random assignment to clusters
@@ -144,7 +158,7 @@ function [centers,cov,x_grid,y_grid,val_grid] = gk_clustering(X,c,eta,grid_accur
 
         % Check stop conditions
         if(all(abs(v_hist(:,:,end) - v_hist(:,:,end-1)) < stop_threshold, 'all'))
-            disp("Stopping in iteration " + string(iteration))
+            disp("Stopping in iteration " + string(iteration) + " due to stop threshold reached")
             break
         end
         if(iteration >= max_iter)
