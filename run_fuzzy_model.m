@@ -13,6 +13,11 @@ function [y, t, y_individual_model] = run_fuzzy_model(u,models, act_table_u, act
 %       act_table_mu    The output part of the activation table, a matrix
 %                       of size n by m. Contains mu lookup values for each
 %                       model.
+%
+%   Outputs:
+%       y                   Output of the model
+%       t                   Time array for the model output
+%       y_individual_model  Weighted outputs of individual linear models. 
 
     num_models = length(models);
 

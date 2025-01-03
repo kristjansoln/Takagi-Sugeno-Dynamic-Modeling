@@ -291,36 +291,8 @@ clear X x_grid y_grid val_grid act_table
 % ------------------------  =  --------------------
 %   1 + a1 z^-1 + a2 y^-2        z^2 + a1 z^1 + a2
 
-model_weights = [];
-models = [];
-
-for i = 1:num_clusters
-    % Generate diagonal weights matrix based on the i-th cluster activation function
-    % Performs table lookup (outputs weigths for each sample in the input
-    % signal)
-    W = interp1(act_table_u, act_table_norm(i,:), u_train(3:end));
-    W = sparse(1:length(W), 1:length(W), W); % Use a sparse diagonal matrix to save memory
-
-    % Correct the input and output signals to represent deviations from the
-    % operating point
-    y = y_train;
-    u = u_train;
-
-    % Generate the psi matrix with delayed inputs
-    m = 2;
-    N = length(y);
-    X = [u(m:N-1)', u(m-1:N-m)', -y(m:N-1)', -y(1:N-m)'];
-
-    % Perform WLS
-    theta_hat = (X'*W*X)\X'*W*y(m+1:end)';
-
-    % discrete-time TF
-    model_weights(:,i) = theta_hat;
-
-    num = theta_hat(1:2)';
-    denom = [1, theta_hat(3:4)'];
-    models = [models, tf(num,denom,ts)];
-end
+models = generate_fuzzy_model(u_train, y_train, ts, act_table_u, ...
+    act_table_norm);
 
 clear W y u X num denom
 
@@ -328,7 +300,9 @@ clear W y u X num denom
 % Perform model evaluation using the test signal
 disp("")
 disp("Fuzzy model evaluation:")
-[y_hat_fuzzy, t_out, individual_model_output] = run_fuzzy_model(u_test(3:end), models, act_table_u, act_table_norm);
+
+[y_hat_fuzzy, t_out, individual_model_output] = run_fuzzy_model( ...
+    u_test(3:end), models, act_table_u, act_table_norm);
 
 % Plot the output
 figure();
