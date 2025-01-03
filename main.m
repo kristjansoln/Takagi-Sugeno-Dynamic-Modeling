@@ -216,10 +216,10 @@ disp(" ")
 % we define a linear model for each cluster and calculate the parameters
 % using the weigthed least squares method.
 
-disp("Fuzzy model")
+disp("Fuzzy model identification")
 
-num_clusters = 7;
-cluster_fuzziness = 1.6;%1.9;
+num_clusters = 6;
+cluster_fuzziness = 2;%1.9;
 clustering_iterations = 150;%30;
 
 % Prepare the input output space for clustering
@@ -228,7 +228,7 @@ clustering_iterations = 150;%30;
 X = [u_train_noprbs', y_train_noprbs'];
 
 % Perform clustering
-[centers, cov_centers, x_grid, y_grid, val_grid] = gk_clustering(X,num_clusters,cluster_fuzziness,400,0.001,clustering_iterations);
+[centers, cov_centers, x_grid, y_grid, val_grid] = gk_clustering(X,num_clusters,cluster_fuzziness,200,0.001,clustering_iterations);
 
 % Draw points, cluster centers and membership contours
 figure; subplot(2,1,1)
@@ -262,18 +262,21 @@ end
 % Normalize the activation functions
 act_table_norm = act_table./repmat(sum(act_table, 2), 1,num_clusters);
 
+act_table = act_table';
+act_table_norm = act_table_norm';
+
 % Plot the activation functions
 subplot(2,2,3)
 hold on; xlabel("input - u"); ylabel("activation function value - \mu_i");
 title("Takagi-Sugeno activation function values")
 for i = 1:num_clusters
-    plot(act_table_u, act_table(:,i));
+    plot(act_table_u, act_table(i,:));
 end
 subplot(2,2,4);
 hold on; xlabel("input - u"); ylabel("cluster membership - \mu_i");
 title("Takagi-Sugeno activation function values - normalized")
 for i = 1:num_clusters
-    plot(act_table_u, act_table_norm(:,i));
+    plot(act_table_u, act_table_norm(i,:));
 end
 
 clear X x_grid y_grid val_grid act_table
@@ -295,8 +298,8 @@ for i = 1:num_clusters
     % Generate diagonal weights matrix based on the i-th cluster activation function
     % Performs table lookup (outputs weigths for each sample in the input
     % signal)
-    W = interp1(act_table_u, act_table_norm(:,i), u_train(3:end));
-    W = sparse(1:length(W), 1:length(W), W); % Use a sparse matrix to save memory
+    W = interp1(act_table_u, act_table_norm(i,:), u_train(3:end));
+    W = sparse(1:length(W), 1:length(W), W); % Use a sparse diagonal matrix to save memory
 
     % Correct the input and output signals to represent deviations from the
     % operating point
@@ -323,21 +326,9 @@ clear W y u X num denom
 
 % Model evaluation
 % Perform model evaluation using the test signal
-
-individual_model_output = [];
-
-for i = 1:num_clusters
-    % Generate weights matrix
-    w = interp1(act_table_u, act_table_norm(:,i), u_test(3:end));
-
-    % Calculate model output
-    [y,t_out] = lsim(models(i), u_test(3:end));
-    y_weighted = y.*w';
-    individual_model_output = [individual_model_output, y_weighted];
-end
-
-% Merge model outputs
-y_hat_fuzzy = sum(individual_model_output, 2);
+disp("")
+disp("Fuzzy model evaluation:")
+[y_hat_fuzzy, t_out, individual_model_output] = run_fuzzy_model(u_test(3:end), models, act_table_u, act_table_norm);
 
 % Plot the output
 figure();
@@ -370,3 +361,11 @@ title("Fuzzy model evaluation: Error through time");
 xlabel("t"); ylabel("e(t)"); grid on;
 
 disp(" ")
+
+
+%% Fuzzy model premise optimization
+
+% Cluster positions are usually not optimal, but somewhat close. We can run
+% additional local optimization on cluster positions and widths, which
+% should improve the performance of the model.
+
