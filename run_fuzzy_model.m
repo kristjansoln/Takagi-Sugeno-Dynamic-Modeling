@@ -17,11 +17,12 @@ function [y, t, y_individual_model] = run_fuzzy_model(u,models, act_table_u, act
 %   Outputs:
 %       y                   Output of the model
 %       t                   Time array for the model output
-%       y_individual_model  Weighted outputs of individual linear models. 
+%       y_individual_model  (Not weighted) outputs of individual linear models. 
 
     num_models = length(models);
 
     y_individual_model = [];
+    y_individual_model_weighted = [];
 
     for i = 1:num_models
         % Generate activation weights
@@ -33,11 +34,12 @@ function [y, t, y_individual_model] = run_fuzzy_model(u,models, act_table_u, act
         % Apply activation weights
         y_weighted = y_raw.*w';
 
-        y_individual_model = [y_individual_model, y_weighted];
+        y_individual_model = [y_individual_model, y_raw];
+        y_individual_model_weighted = [y_individual_model_weighted, y_weighted];
     end
     
     % Merge model outputs
-    y = sum(y_individual_model, 2);
+    y = sum(y_individual_model_weighted, 2);
 
 end
 

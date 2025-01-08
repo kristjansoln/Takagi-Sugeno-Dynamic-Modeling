@@ -11,8 +11,7 @@ disp("Generate training and test signals")
 ts = 0.01;  % Sampling time
 umin = 0;
 umax = 1.35; % Saturates the output
-% umax = 1.2;
-umax = 1.32;
+% umax = 1.32;
 
 % Training signal
 
@@ -21,7 +20,7 @@ y_train = [];
 t_train = [];
 
 % Step signal
-n_steps = 20;
+n_steps = 30;
 step_time = 10;
 deltau = (umax-umin)/n_steps;
 
@@ -47,7 +46,7 @@ u_train_noprbs = u_train;
 % APBRS signal
 % APRBS should contain pulses with lenght of at least the rise time of the
 % process. Here, 1.5 or 2 sec should be enough.
-pbrs_time = 500;
+pbrs_time = 1500;
 t_new = t_train(end):ts:(t_train(end)+pbrs_time);
 
 len_min = round(2/ts); % In samples
@@ -183,7 +182,7 @@ y_test_cell = num2cell(y_test);
 [inputs,Pi1,Ai1,t1] = preparets(net_closed,u_test_cell,{},y_test_cell);
 % [inputs,Pi1,Ai1] = preparets(net_closed,U_test,{});
 
-% Gets model output
+% Get model output
 y_hat_nn = net_closed(inputs,Pi1,Ai1);
 y_hat_nn = cell2mat(y_hat_nn);
 
@@ -194,7 +193,6 @@ disp("Root Mean Square error: " + string(rms_error));
 disp("Standard deviation of error: " + string(std(e)));
 
 figure();
-subplot(2,1,1);
 plot(t_test(3:end), y_test(3:end));
 hold on;
 plot(t_test(3:end), y_hat_nn);
@@ -202,7 +200,7 @@ title("Neural network model: output")
 legend("True value", "Model output")
 xlabel("t"); ylabel("y(t)");
 
-subplot(2,1,2);
+figure();
 plot(t_test(3:end), e)
 title("Neural network model: Error through time");
 xlabel("t"); ylabel("e(t)")
@@ -218,9 +216,9 @@ disp(" ")
 
 disp("Fuzzy model identification")
 
-num_clusters = 6;
-cluster_fuzziness = 2;%1.9;
-clustering_iterations = 150;%30;
+num_clusters = 5;
+cluster_fuzziness = 2.0;%1.9;
+clustering_iterations = 100;%30;
 
 % Prepare the input output space for clustering
 % We perform the clustering without the APRBS part, as it seems to mess
@@ -333,13 +331,3 @@ figure();
 plot(t_test(3:end), e)
 title("Fuzzy model evaluation: Error through time");
 xlabel("t"); ylabel("e(t)"); grid on;
-
-disp(" ")
-
-
-%% Fuzzy model premise optimization
-
-% Cluster positions are usually not optimal, but somewhat close. We can run
-% additional local optimization on cluster positions and widths, which
-% should improve the performance of the model.
-
