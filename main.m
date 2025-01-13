@@ -253,8 +253,8 @@ act_table_u = umin:du:umax; %  The independent variable in the lookup table
 
 for i = 1:num_clusters
     mean_u = centers(i,1);
-    std_u = sqrt(cov_centers(1,1,i));
-    act_table = [act_table, gaussmf(act_table_u, [std_u,mean_u])']; % The dependent variable in the lookup table
+    dev_u = sqrt(cov_centers(1,1,i));
+    act_table = [act_table, gaussmf(act_table_u, [dev_u,mean_u])']; % The dependent variable in the lookup table
 end
 
 % Normalize the activation functions
@@ -331,3 +331,110 @@ figure();
 plot(t_test(3:end), e)
 title("Fuzzy model evaluation: Error through time");
 xlabel("t"); ylabel("e(t)"); grid on;
+
+% Save the model
+% cov_centers = squeeze(cov_centers(1,1,:));
+% save hcr_fuzzy_model_params models act_table_u act_table_norm centers cov_centers
+
+%% Add aditional models for large input values
+% Additional models help with prediction near output saturation
+
+%clear all
+close all
+load hcr_fuzzy_model_params.mat
+
+disp(" ")
+disp("Optimize model for large input values")
+
+u_min = 0;
+u_max = 1.35;
+num_extra_models = 6;
+dev_factor = 0.6; % How narrow the new assignment functions will be
+
+% Sort centers and deviations
+centers_u = centers(:,1);
+[centers_u, i] = sort(centers_u);
+dev_u = sqrt(cov_centers(i));
+
+% Remove the highest two centers and add extra new centers up to u_max
+disp("Removing centers " + string(centers_u(end)) + " and " + string(centers_u(end-1)));
+dev_umax_old = dev_u(end); % Remember the top cluster deviation for later reference
+
+centers_u = centers_u(1:end-2);
+dev_u = dev_u(1:end-2);
+
+low_bound = centers_u(end) + 1.5*dev_u(end);
+du = (u_max - low_bound)/(num_extra_models - 1);
+centers_u = [centers_u; (low_bound:du:u_max)'];
+dev_u = [dev_u; dev_factor*dev_umax_old*ones(size((low_bound:du:u_max)'))];
+
+% Generate assignment function table
+
+act_table = [];
+
+du = (u_max-u_min)/400;
+act_table_u_opt = u_min:du:u_max; %  The independent variable in the lookup table
+num_clusters = length(centers_u);
+
+for i = 1:num_clusters
+    mean = centers_u(i);
+    dev = dev_u(i);
+    act_table = [act_table, gaussmf(act_table_u_opt, [dev,mean])']; % The dependent variable in the lookup table
+end
+
+% Normalize the activation functions
+act_table_norm = act_table./repmat(sum(act_table, 2), 1,num_clusters);
+
+act_table = act_table';
+act_table_norm = act_table_norm';
+
+% Plot the activation functions
+figure();
+subplot(2,1,1)
+hold on; xlabel("input - u"); ylabel("activation function value - \mu_i");
+title("Optimized TS activation function values")
+for i = 1:num_clusters
+    plot(act_table_u_opt, act_table(i,:));
+end
+subplot(2,1,2);
+hold on; xlabel("input - u"); ylabel("cluster membership - \mu_i");
+title("Optimized TS activation function values - normalized")
+for i = 1:num_clusters
+    plot(act_table_u_opt, act_table_norm(i,:));
+end
+
+% Regenerate the fuzzy model
+models_opt = generate_fuzzy_model(u_train, y_train, ts, act_table_u_opt, ...
+    act_table_norm);
+
+% Evaluate the model
+disp("Evaluation of the optimized model")
+
+[y_hat_fuzzy_opt, t_out_opt, individual_model_output_opt] = run_fuzzy_model( ...
+    u_test(3:end), models_opt, act_table_u_opt, act_table_norm);
+
+figure();
+title("Optimized fuzzy model evaluation: output")
+hold on; grid on;
+plot(t_test, y_test, '-')
+plot(t_out_opt, y_hat_fuzzy_opt)
+legend("$y_{test}$", '$\hat{y}_{model}$' ,'Interpreter','latex')
+xlabel("t");
+
+% Calculate and plot the error
+e = y_hat_fuzzy_opt - y_test(3:end)';
+rms_error = rmse(y_hat_fuzzy_opt, y_test(3:end)');
+disp("Root Mean Square error: " + string(rms_error));
+disp("Standard deviation of error: " + string(std(e)));
+
+figure();
+plot(t_test(3:end), e)
+title("Optimized fuzzy model evaluation: Error through time");
+xlabel("t"); ylabel("e(t)"); grid on;
+
+% Save the model
+% models=models_opt;
+% act_table_u = act_table_u_opt;
+% centers = centers_u;
+% dev_centers = dev_u;
+% save hcr_optimized_model models act_table_u act_table_norm centers dev_centers
